@@ -6,12 +6,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Camera, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-interface BarcodeScannerProps {
+interface BarcodeScannerSimpleProps {
   onScan: (code: string) => void
   onError: (error: string) => void
 }
 
-export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps) {
+export default function BarcodeScannerSimple({ onScan, onError }: BarcodeScannerSimpleProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -19,8 +19,6 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [codeReader, setCodeReader] = useState<any>(null)
   const [isInitializing, setIsInitializing] = useState(true)
-  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const retryCountRef = useRef(0)
 
   useEffect(() => {
     startCamera()
@@ -34,40 +32,21 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
       setError(null)
       setIsScanning(true)
       setIsInitializing(true)
-      retryCountRef.current = 0
 
-      // Tentar diferentes configurações de câmera
-      const constraints = {
+      // Configuração mais simples da câmera
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: "environment", // Câmera traseira (melhor para códigos de barras)
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          frameRate: { ideal: 30, min: 15 },
+          facingMode: "environment",
+          width: { ideal: 640 },
+          height: { ideal: 480 },
         },
-      }
-
-      let mediaStream: MediaStream
-
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
-      } catch (err) {
-        // Fallback para configurações mais básicas
-        console.log("Tentando configuração alternativa da câmera...")
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment",
-            width: { min: 320 },
-            height: { min: 240 },
-          },
-        })
-      }
+      })
 
       setStream(mediaStream)
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream
         
-        // Aguardar o vídeo carregar antes de iniciar o scan
         videoRef.current.onloadedmetadata = () => {
           console.log("Vídeo carregado, iniciando scanner...")
           setIsInitializing(false)
@@ -79,7 +58,6 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
           setError("Erro ao carregar o vídeo da câmera")
         }
 
-        // Iniciar o vídeo
         try {
           await videoRef.current.play()
         } catch (err) {
@@ -103,11 +81,6 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
       setStream(null)
     }
 
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current)
-      scanIntervalRef.current = null
-    }
-
     if (codeReader) {
       try {
         codeReader.reset()
@@ -129,15 +102,14 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
     try {
       console.log("Carregando biblioteca ZXing...")
       
-      // Importar dinamicamente a biblioteca de leitura de códigos de barras
       const ZXing = await import("@zxing/library")
       
       console.log("Criando leitor de códigos...")
       
-      // Criar o leitor com configurações otimizadas
+      // Criar o leitor com configurações mais simples
       const reader = new ZXing.BrowserMultiFormatReader()
       
-      // Configurar formatos de códigos de barras suportados
+      // Configurar formatos básicos
       const hints = new Map()
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
         ZXing.BarcodeFormat.CODE_128,
@@ -154,30 +126,23 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
         ZXing.BarcodeFormat.CODABAR
       ])
       
-      // Configurar outras dicas de decodificação
+      // Configurações básicas
       hints.set(ZXing.DecodeHintType.TRY_HARDER, true)
       hints.set(ZXing.DecodeHintType.CHARACTER_SET, "UTF-8")
-      hints.set(ZXing.DecodeHintType.NEED_RESULT_POINT_CALLBACK, false)
       
       reader.hints = hints
       setCodeReader(reader)
 
       console.log("Iniciando processo de scanning...")
 
-      // Função para tentar ler o código de barras
-      const attemptScan = async () => {
+      // Função de scanning mais simples
+      const scanCode = async () => {
         if (!videoRef.current || !reader || videoRef.current.readyState !== 4) {
-          console.log("Scanner não pronto:", {
-            video: !!videoRef.current,
-            reader: !!reader,
-            readyState: videoRef.current?.readyState
-          })
           return
         }
 
         try {
-          console.log("Tentando ler código de barras...")
-          // Usar a API correta do ZXing
+          console.log("Tentando ler código...")
           const result = await reader.decodeFromVideoElement(videoRef.current)
           
           if (result && result.getText()) {
@@ -185,36 +150,37 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
             
             console.log("Código detectado:", scannedText)
             
-            // Evitar scans duplicados consecutivos
             if (scannedText && scannedText !== lastScan) {
               console.log("Enviando código para processamento:", scannedText)
               setLastScan(scannedText)
               onScan(scannedText)
-              
-              // Parar temporariamente o scanning após um scan bem-sucedido
-              if (scanIntervalRef.current) {
-                clearInterval(scanIntervalRef.current)
-                scanIntervalRef.current = null
-              }
-              
-              // Reiniciar o scanning após 2 segundos
-              setTimeout(() => {
-                if (isScanning) {
-                  scanIntervalRef.current = setInterval(attemptScan, 300)
-                }
-              }, 2000)
             }
           }
         } catch (err) {
-          // Ignorar erros de leitura (normal quando não há código visível)
-          console.log("Nenhum código detectado:", err)
+          // Ignorar erros de leitura
+          console.log("Nenhum código detectado")
         }
       }
 
-      // Aguardar um pouco antes de iniciar o scanning
+      // Iniciar scanning contínuo
+      const startContinuousScan = () => {
+        const scanInterval = setInterval(async () => {
+          await scanCode()
+        }, 500) // 500ms entre tentativas
+
+        // Parar após 30 segundos se não encontrar nada
+        setTimeout(() => {
+          clearInterval(scanInterval)
+          if (isScanning) {
+            startContinuousScan() // Reiniciar
+          }
+        }, 30000)
+      }
+
+      // Aguardar um pouco antes de iniciar
       setTimeout(() => {
-        console.log("Iniciando intervalo de scanning...")
-        scanIntervalRef.current = setInterval(attemptScan, 300) // 300ms para melhor performance
+        console.log("Iniciando scanning contínuo...")
+        startContinuousScan()
       }, 1000)
 
     } catch (err) {
@@ -341,4 +307,4 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
       </CardContent>
     </Card>
   )
-}
+} 

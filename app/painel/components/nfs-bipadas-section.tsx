@@ -27,6 +27,8 @@ import {
   MessageSquare,
 } from "lucide-react"
 import BarcodeScanner from "./barcode-scanner"
+import BarcodeScannerSimple from "./barcode-scanner-simple"
+import BarcodeTest from "./barcode-test"
 import ChatModal from "./chat-modal"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from '@supabase/supabase-js'
@@ -605,16 +607,23 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
   }
 
   const handleCodigoEscaneado = (codigo: string) => {
+    console.log("Código escaneado recebido:", codigo)
     setCodigoInput(codigo)
     setScannerAtivo(false)
 
     // Processar automaticamente o código escaneado
     setTimeout(() => {
-      if (!carroAtivo) return
+      if (!carroAtivo) {
+        console.log("Nenhum carro ativo encontrado")
+        return
+      }
       
+      console.log("Processando código:", codigo.trim())
       const resultado = validarCodigo(codigo.trim())
+      console.log("Resultado da validação:", resultado)
 
       if (resultado.valido && resultado.nf && carroAtivo) {
+        console.log("Código válido, adicionando NF ao carro")
         // Atualizar o carro ativo
         const carrosAtualizados = carros.map((c) => {
           if (c.id === carroAtivo.id) {
@@ -642,6 +651,7 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
         }
         setCodigoInput("")
       } else if (carroAtivo) {
+        console.log("Código inválido, adicionando como erro")
         const nfInvalida: NFBipada = {
           id: Date.now().toString(),
           codigoCompleto: codigo.trim(),
@@ -1380,7 +1390,12 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
                   Fechar Scanner
                 </Button>
               </div>
-              <BarcodeScanner
+              
+              {/* Componente de teste temporário */}
+              <BarcodeTest />
+              
+              {/* Usar a versão simplificada do scanner */}
+              <BarcodeScannerSimple
                 onScan={handleCodigoEscaneado}
                 onError={(error) => {
                   console.error("Erro no scanner:", error)
