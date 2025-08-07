@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Camera, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { config } from "@/lib/config"
 
 interface BarcodeScannerSimpleProps {
   onScan: (code: string) => void
@@ -162,20 +163,20 @@ export default function BarcodeScannerSimple({ onScan, onError }: BarcodeScanner
         }
       }
 
-      // Iniciar scanning contínuo
-      const startContinuousScan = () => {
-        const scanInterval = setInterval(async () => {
-          await scanCode()
-        }, 500) // 500ms entre tentativas
+              // Iniciar scanning contínuo
+        const startContinuousScan = () => {
+          const scanInterval = setInterval(async () => {
+            await scanCode()
+          }, config.scanner.interval) // Usar configuração centralizada
 
-        // Parar após 30 segundos se não encontrar nada
-        setTimeout(() => {
-          clearInterval(scanInterval)
-          if (isScanning) {
-            startContinuousScan() // Reiniciar
-          }
-        }, 30000)
-      }
+          // Parar após o timeout configurado se não encontrar nada
+          setTimeout(() => {
+            clearInterval(scanInterval)
+            if (isScanning) {
+              startContinuousScan() // Reiniciar
+            }
+          }, config.scanner.timeout)
+        }
 
       // Aguardar um pouco antes de iniciar
       setTimeout(() => {

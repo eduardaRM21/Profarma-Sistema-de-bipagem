@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Camera, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { config } from "@/lib/config"
 
 interface BarcodeScannerProps {
   onScan: (code: string) => void
@@ -211,11 +212,11 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
         }
       }
 
-      // Aguardar um pouco antes de iniciar o scanning
-      setTimeout(() => {
-        console.log("Iniciando intervalo de scanning...")
-        scanIntervalRef.current = setInterval(attemptScan, 300) // 300ms para melhor performance
-      }, 1000)
+              // Aguardar um pouco antes de iniciar o scanning
+        setTimeout(() => {
+          console.log("Iniciando intervalo de scanning...")
+          scanIntervalRef.current = setInterval(attemptScan, config.scanner.interval)
+        }, 1000)
 
     } catch (err) {
       console.error("Erro ao carregar biblioteca ZXing:", err)

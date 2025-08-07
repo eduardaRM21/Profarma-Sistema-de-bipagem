@@ -31,11 +31,12 @@ import BarcodeScannerSimple from "./barcode-scanner-simple"
 import BarcodeTest from "./barcode-test"
 import ChatModal from "./chat-modal"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { createClient } from '@supabase/supabase-js'
+import { config, debugConfig } from '@/lib/config'
+import { supabase, debugSupabaseConfig } from '@/lib/supabase-client'
 
-const supabaseUrl = 'https://auiidcxarcjjxvyswwhf.supabase.co'
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1aWlkY3hhcmNqanh2eXN3d2hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMjcxNjAsImV4cCI6MjA2ODkwMzE2MH0.KCMuEq5p1UHtZp-mJc5RKozEyWhpZg8J023lODrr3rY'
-const supabase = createClient(supabaseUrl, supabaseKey)
+// Inicializar configuração
+debugConfig()
+debugSupabaseConfig()
 
 interface NFBipada {
   id: string
