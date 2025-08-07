@@ -27,7 +27,7 @@ import {
   MessageSquare,
 } from "lucide-react"
 import BarcodeScanner from "./barcode-scanner"
-import BarcodeScannerRobust from "./barcode-scanner-robust"
+import BarcodeScannerAggressive from "./barcode-scanner-aggressive"
 import BarcodeTest from "./barcode-test"
 import ChatModal from "./chat-modal"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -1397,8 +1397,8 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
               {/* Componente de teste temporário */}
               <BarcodeTest />
               
-              {/* Usar a versão robusta do scanner */}
-              <BarcodeScannerRobust
+              {/* Usar a versão agressiva do scanner */}
+              <BarcodeScannerAggressive
                 onScan={handleCodigoEscaneado}
                 onError={(error: string) => {
                   console.error("Erro no scanner:", error)
