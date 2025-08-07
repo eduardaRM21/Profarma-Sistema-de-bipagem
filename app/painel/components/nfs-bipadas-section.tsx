@@ -27,10 +27,11 @@ import {
   MessageSquare,
 } from "lucide-react"
 import BarcodeScanner from "./barcode-scanner"
-import BarcodeScannerSimple from "./barcode-scanner-simple"
+import BarcodeScannerFixed from "./barcode-scanner-fixed"
 import BarcodeTest from "./barcode-test"
 import ChatModal from "./chat-modal"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useToast } from "@/components/ui/use-toast"
 import { config, debugConfig } from '@/lib/config'
 import { supabase, debugSupabaseConfig } from '@/lib/supabase-client'
 
@@ -78,6 +79,7 @@ interface NFsBipadasSectionProps {
 type StatusCarro = "aguardando_colagem" | "em_conferencia" | "liberado" | "embalando" | "em_producao"
 
 export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProps) {
+  const { toast } = useToast()
   const [carros, setCarros] = useState<Carro[]>([])
   const [carroAtivo, setCarroAtivo] = useState<Carro | null>(null)
   const [codigoInput, setCodigoInput] = useState("")
@@ -1395,12 +1397,12 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
               {/* Componente de teste temporário */}
               <BarcodeTest />
               
-              {/* Usar a versão simplificada do scanner */}
-              <BarcodeScannerSimple
+              {/* Usar a versão corrigida do scanner */}
+              <BarcodeScannerFixed
                 onScan={handleCodigoEscaneado}
                 onError={(error) => {
                   console.error("Erro no scanner:", error)
-                  alert("Erro ao acessar a câmera. Verifique as permissões.")
+                  alert("Erro no Scanner: " + error)
                 }}
               />
             </div>
