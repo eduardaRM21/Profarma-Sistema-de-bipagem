@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useSession } from "@/hooks/use-database";
 
 export default function LoginPage() {
   const [colaboradores, setColaboradores] = useState([""]);
@@ -47,6 +48,8 @@ export default function LoginPage() {
   const [area, setArea] = useState("");
   const [usuarioCustos, setUsuarioCustos] = useState("");
   const [senhaCustos, setSenhaCustos] = useState("");
+
+  const { saveSession } = useSession();
 
   const colaboradoresPreenchidos = colaboradores.filter((c) => c.trim() !== "");
 
@@ -136,7 +139,18 @@ export default function LoginPage() {
       usuarioCustos: area === "custos" ? usuarioCustos : undefined,
     };
 
-    localStorage.setItem("sistema_session", JSON.stringify(loginData));
+    try {
+      // Salvar no banco de dados
+      await saveSession(loginData)
+      console.log("✅ Sessão salva no banco de dados")
+    } catch (error) {
+      console.error("Erro ao salvar sessão no banco:", error)
+      console.log("⚠️ Usando fallback para localStorage temporariamente")
+      
+      // Fallback temporário para localStorage
+      localStorage.setItem("sistema_session", JSON.stringify(loginData))
+      console.log("✅ Sessão salva no localStorage como fallback")
+    }
 
     switch (area) {
       case "recebimento":

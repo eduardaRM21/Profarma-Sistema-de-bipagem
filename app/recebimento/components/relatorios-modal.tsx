@@ -10,42 +10,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { FileText, Search, CalendarIcon, Eye, Package, CheckCircle, AlertTriangle, Filter } from "lucide-react"
+import { FileText, Search, CalendarIcon, Eye, Package, CheckCircle, AlertTriangle, Filter, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-
-interface NotaFiscal {
-  id: string
-  codigoCompleto: string
-  data: string
-  numeroNF: string
-  volumes: number
-  destino: string
-  fornecedor: string
-  clienteDestino: string
-  tipoCarga: string
-  timestamp: string
-  status: "ok" | "divergencia"
-  divergencia?: {
-    tipo: string
-    descricao: string
-    volumesInformados: number
-  }
-}
-
-interface Relatorio {
-  id: string
-  nome: string
-  colaboradores: string
-  data: string
-  turno: string
-  area: string
-  quantidadeNotas: number
-  somaVolumes: number
-  notas: NotaFiscal[]
-  dataFinalizacao: string
-  status: string
-}
+import { useRelatorios } from "@/hooks/use-database"
+import type { NotaFiscal, Relatorio } from "@/lib/database-service"
 
 interface RelatoriosModalProps {
   isOpen: boolean
@@ -58,6 +27,11 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
   const [filtroTexto, setFiltroTexto] = useState("")
   const [dataFiltro, setDataFiltro] = useState<Date>()
   const [relatorioSelecionado, setRelatorioSelecionado] = useState<Relatorio | null>(null)
+  const [carregando, setCarregando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  // Hook do banco de dados
+  const { getRelatorios } = useRelatorios()
 
   useEffect(() => {
     if (isOpen) {
@@ -69,21 +43,34 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
     aplicarFiltros()
   }, [relatorios, filtroTexto, dataFiltro])
 
-  const carregarRelatorios = () => {
-    const chaveRelatorios = "relatorios_custos"
-    const relatoriosSalvos = localStorage.getItem(chaveRelatorios)
-    if (relatoriosSalvos) {
-      const todosRelatorios = JSON.parse(relatoriosSalvos)
+  const carregarRelatorios = async () => {
+    setCarregando(true)
+    setErro(null)
+    
+    try {
+      console.log('🔍 Carregando relatórios do banco de dados...')
+      const todosRelatorios = await getRelatorios()
+      
       // Filtrar apenas relatórios da área de recebimento
       const relatoriosRecebimento = todosRelatorios.filter((rel: Relatorio) => rel.area === "recebimento")
       
-      // Garantir que somaVolumes seja sempre um número
-      const relatoriosCorrigidos = relatoriosRecebimento.map((rel: Relatorio) => ({
-        ...rel,
-        somaVolumes: rel.somaVolumes || rel.notas?.reduce((sum, nota) => sum + (nota.divergencia?.volumesInformados || nota.volumes), 0) || 0
-      }))
+      console.log('✅ Relatórios carregados:', relatoriosRecebimento.length, 'relatórios de recebimento')
+      setRelatorios(relatoriosRecebimento)
+    } catch (error) {
+      console.error('❌ Erro ao carregar relatórios:', error)
+      setErro('Erro ao carregar relatórios do banco de dados')
       
-      setRelatorios(relatoriosCorrigidos)
+      // Fallback para localStorage
+      console.log('⚠️ Usando fallback para localStorage')
+      const chaveRelatorios = "relatorios_custos"
+      const relatoriosSalvos = localStorage.getItem(chaveRelatorios)
+      if (relatoriosSalvos) {
+        const todosRelatorios = JSON.parse(relatoriosSalvos)
+        const relatoriosRecebimento = todosRelatorios.filter((rel: Relatorio) => rel.area === "recebimento")
+        setRelatorios(relatoriosRecebimento)
+      }
+    } finally {
+      setCarregando(false)
     }
   }
 
@@ -238,7 +225,18 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
 
             {/* Lista de Relatórios */}
             <ScrollArea className="h-96">
-              {relatoriosFiltrados.length === 0 ? (
+              {carregando ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+                  <p className="text-gray-500 mt-2">Carregando relatórios...</p>
+                </div>
+              ) : erro ? (
+                <div className="text-center py-8 text-red-500">
+                  <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-red-300" />
+                  <h3 className="text-lg font-medium mb-2">Erro ao carregar relatórios</h3>
+                  <p>{erro}</p>
+                </div>
+              ) : relatoriosFiltrados.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
                   <h3 className="text-lg font-medium mb-2">Nenhum relatório encontrado</h3>

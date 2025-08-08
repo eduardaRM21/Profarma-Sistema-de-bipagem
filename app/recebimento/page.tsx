@@ -27,33 +27,10 @@ import ConfirmacaoModal from "./components/confirmacao-modal"
 import DivergenciaModal from "./components/divergencia-modal"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import RelatoriosModal from "./components/relatorios-modal"
+import { useSession, useRecebimento, useRelatorios } from "@/hooks/use-database"
+import type { SessionData, NotaFiscal } from "@/lib/database-service"
 
-interface SessionData {
-  colaboradores: string
-  data: string
-  turno: string
-  area: string
-  loginTime: string
-}
 
-interface NotaFiscal {
-  id: string
-  codigoCompleto: string
-  data: string
-  numeroNF: string
-  volumes: number
-  destino: string
-  fornecedor: string
-  clienteDestino: string
-  tipoCarga: string
-  timestamp: string
-  status: "ok" | "divergencia"
-  divergencia?: {
-    tipo: string
-    descricao: string
-    volumesInformados: number
-  }
-}
 
 const TIPOS_DIVERGENCIA = [
   { codigo: "0063", descricao: "Avaria transportadora" },
@@ -75,14 +52,19 @@ const TIPOS_DIVERGENCIA = [
 
 export default function RecebimentoPage() {
   const [sessionData, setSessionData] = useState<SessionData | null>(null)
-  const [notas, setNotas] = useState<NotaFiscal[]>([])
+  const [notas, setNotas] = useState<import("@/lib/database-service").NotaFiscal[]>([])
   const [codigoInput, setCodigoInput] = useState("")
   const [scannerAtivo, setScannerAtivo] = useState(false)
   const [modalConfirmacao, setModalConfirmacao] = useState(false)
   const [modalDivergencia, setModalDivergencia] = useState(false)
-  const [notaAtual, setNotaAtual] = useState<NotaFiscal | null>(null)
+  const [notaAtual, setNotaAtual] = useState<import("@/lib/database-service").NotaFiscal | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
+
+  // Hooks do banco de dados
+  const { getSession } = useSession()
+  const { getNotas, saveNotas } = useRecebimento()
+  const { saveRelatorio } = useRelatorios()
 
   // Adicionar estado para modal de finalização
   const [modalFinalizacao, setModalFinalizacao] = useState(false)
@@ -90,44 +72,98 @@ export default function RecebimentoPage() {
   const [modalRelatorios, setModalRelatorios] = useState(false)
 
   useEffect(() => {
-    const session = localStorage.getItem("sistema_session")
-    if (!session) {
-      router.push("/")
-      return
+    const verificarSessao = async () => {
+      try {
+        // Obter sessão do banco de dados
+        const session = await getSession("current")
+        
+        if (!session) {
+          // Fallback temporário para localStorage
+          const sessionLocal = localStorage.getItem("sistema_session")
+          if (!sessionLocal) {
+            router.push("/")
+            return
+          }
+          
+          const sessionObj = JSON.parse(sessionLocal)
+          if (sessionObj.area !== "recebimento") {
+            router.push("/")
+            return
+          }
+          
+          setSessionData(sessionObj)
+          await carregarNotas(sessionObj)
+        } else {
+          if (session.area !== "recebimento") {
+            router.push("/")
+            return
+          }
+          setSessionData(session)
+          await carregarNotas(session)
+        }
+      } catch (error) {
+        console.error("Erro ao verificar sessão:", error)
+        console.log("⚠️ Usando fallback para localStorage")
+        
+        // Fallback temporário
+        const sessionLocal = localStorage.getItem("sistema_session")
+        if (!sessionLocal) {
+          router.push("/")
+          return
+        }
+        
+        const sessionObj = JSON.parse(sessionLocal)
+        if (sessionObj.area !== "recebimento") {
+          router.push("/")
+          return
+        }
+        
+        setSessionData(sessionObj)
+        await carregarNotas(sessionObj)
+      }
     }
 
-    const sessionObj = JSON.parse(session)
-    if (sessionObj.area !== "recebimento") {
-      router.push("/")
-      return
-    }
+    verificarSessao()
+  }, [router, getSession])
 
-    setSessionData(sessionObj)
-    carregarNotas(sessionObj)
-
-    // Focar no input
-    if (inputRef.current) {
-      inputRef.current.focus()
-    }
-  }, [router])
-
-  const carregarNotas = (session: SessionData) => {
-    const chave = `recebimento_${session.colaboradores}_${session.data}_${session.turno}`
-    const notasSalvas = localStorage.getItem(chave)
-    if (notasSalvas) {
-      setNotas(JSON.parse(notasSalvas))
+  const carregarNotas = async (session: SessionData) => {
+    try {
+      const chave = `recebimento_${session.colaboradores.join('_')}_${session.data}_${session.turno}`
+      const notasCarregadas = await getNotas(chave)
+      setNotas(notasCarregadas)
+    } catch (error) {
+      console.error("Erro ao carregar notas:", error)
+      console.log("⚠️ Usando fallback para localStorage")
+      
+      // Fallback temporário
+      const chave = `recebimento_${session.colaboradores.join('_')}_${session.data}_${session.turno}`
+      const notasSalvas = localStorage.getItem(chave)
+      if (notasSalvas) {
+        setNotas(JSON.parse(notasSalvas))
+      }
     }
   }
 
-  const salvarNotas = (notasAtualizadas: NotaFiscal[]) => {
+  const salvarNotas = async (notasAtualizadas: import("@/lib/database-service").NotaFiscal[]) => {
     if (!sessionData) return
-    const chave = `recebimento_${sessionData.colaboradores}_${sessionData.data}_${sessionData.turno}`
-    localStorage.setItem(chave, JSON.stringify(notasAtualizadas))
-    setNotas(notasAtualizadas)
+
+    try {
+      const chave = `recebimento_${sessionData.colaboradores.join('_')}_${sessionData.data}_${sessionData.turno}`
+      await saveNotas(chave, notasAtualizadas)
+      setNotas(notasAtualizadas)
+    } catch (error) {
+      console.error("Erro ao salvar notas:", error)
+      console.log("⚠️ Usando fallback para localStorage")
+      
+      // Fallback temporário
+      const chave = `recebimento_${sessionData.colaboradores.join('_')}_${sessionData.data}_${sessionData.turno}`
+      localStorage.setItem(chave, JSON.stringify(notasAtualizadas))
+      setNotas(notasAtualizadas)
+    }
   }
 
   // Atualizar a função validarCodigo para verificar notas já utilizadas em outros relatórios
-  const validarCodigo = (codigo: string): { valido: boolean; nota?: NotaFiscal; erro?: string } => {
+  const validarCodigo = (codigo: string): { valido: boolean; nota?: import("@/lib/database-service").NotaFiscal; erro?: string } => {
     // Formato: data|nf|volumes|destino|fornecedor|cliente_destino|tipo_carga
     const partes = codigo.split("|")
 
@@ -264,8 +300,7 @@ export default function RecebimentoPage() {
       ...notaAtual,
       status: "divergencia",
       divergencia: {
-        tipo: tipoDivergencia,
-        descricao: tipoObj?.descricao || "Divergência não identificada",
+        observacoes: `${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`,
         volumesInformados,
       },
     }
@@ -292,46 +327,55 @@ export default function RecebimentoPage() {
     setModalFinalizacao(true)
   }
 
-  const confirmarFinalizacao = () => {
+  const confirmarFinalizacao = async () => {
     if (!nomeTransportadora.trim()) {
       alert("Nome da transportadora é obrigatório!")
       return
     }
 
-    // Salvar relatório para custos
-    const somaVolumes = notas.reduce((sum, nota) => sum + (nota.divergencia?.volumesInformados || nota.volumes), 0);
-    console.log("Soma de volumes calculada:", somaVolumes);
-    console.log("Notas para cálculo:", notas.map(n => ({ nf: n.numeroNF, volumes: n.volumes, divergencia: n.divergencia?.volumesInformados })));
-    
-    const relatorio = {
-      id: `REL_${Date.now()}`,
-      nome: nomeTransportadora.trim(),
-      colaboradores: sessionData?.colaboradores,
-      data: sessionData?.data,
-      turno: sessionData?.turno,
-      area: "recebimento",
-      quantidadeNotas: notas.length,
-      somaVolumes: somaVolumes,
-      notas: notas,
-      dataFinalizacao: new Date().toISOString(),
-      status: "finalizado",
+    try {
+      // Salvar relatório para custos
+      const somaVolumes = notas.reduce((sum, nota) => sum + (nota.divergencia?.volumesInformados || nota.volumes), 0);
+      console.log("Soma de volumes calculada:", somaVolumes);
+      console.log("Notas para cálculo:", notas.map(n => ({ nf: n.numeroNF, volumes: n.volumes, divergencia: n.divergencia?.volumesInformados })));
+      
+      const relatorio = {
+        id: `REL_${Date.now()}`,
+        nome: nomeTransportadora.trim(),
+        colaboradores: sessionData?.colaboradores || [],
+        data: sessionData?.data || "",
+        turno: sessionData?.turno || "",
+        area: "recebimento",
+        quantidadeNotas: notas.length,
+        somaVolumes: somaVolumes,
+        notas: notas,
+        dataFinalizacao: new Date().toISOString(),
+        status: "finalizado",
+      }
+
+      // Salvar no banco de dados
+      await saveRelatorio(relatorio)
+      console.log('✅ Relatório salvo no banco de dados')
+
+      // Fallback para localStorage
+      const chaveRelatorios = "relatorios_custos"
+      const relatoriosExistentes = localStorage.getItem(chaveRelatorios)
+      const relatorios = relatoriosExistentes ? JSON.parse(relatoriosExistentes) : []
+      relatorios.unshift(relatorio)
+      localStorage.setItem(chaveRelatorios, JSON.stringify(relatorios))
+
+      alert(`Relatório "${nomeTransportadora.trim()}" finalizado com sucesso!\nEnviado para a área de Custos.`)
+
+      // Limpar dados da sessão
+      const chave = `recebimento_${sessionData?.colaboradores.join('_')}_${sessionData?.data}_${sessionData?.turno}`
+      await saveNotas(chave, [])
+      setNotas([])
+      setModalFinalizacao(false)
+      setNomeTransportadora("")
+    } catch (error) {
+      console.error('❌ Erro ao salvar relatório:', error)
+      alert('Erro ao salvar relatório. Tente novamente.')
     }
-
-    // Salvar na lista de relatórios
-    const chaveRelatorios = "relatorios_custos"
-    const relatoriosExistentes = localStorage.getItem(chaveRelatorios)
-    const relatorios = relatoriosExistentes ? JSON.parse(relatoriosExistentes) : []
-    relatorios.unshift(relatorio)
-    localStorage.setItem(chaveRelatorios, JSON.stringify(relatorios))
-
-    alert(`Relatório "${nomeTransportadora.trim()}" finalizado com sucesso!\nEnviado para a área de Custos.`)
-
-    // Limpar dados da sessão
-    const chave = `recebimento_${sessionData?.colaboradores}_${sessionData?.data}_${sessionData?.turno}`
-    localStorage.removeItem(chave)
-    setNotas([])
-    setModalFinalizacao(false)
-    setNomeTransportadora("")
   }
 
   const handleLogout = () => {
@@ -560,7 +604,7 @@ export default function RecebimentoPage() {
                             </div>
                             {nota.divergencia && (
                               <div className="text-orange-600 font-medium">
-                                🔸 {nota.divergencia.tipo} - {nota.divergencia.descricao}
+                                🔸 {nota.divergencia.observacoes}
                                 {nota.divergencia.volumesInformados !== nota.volumes && (
                                   <span>
                                     {" "}

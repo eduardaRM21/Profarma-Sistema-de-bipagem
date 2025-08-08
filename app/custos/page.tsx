@@ -36,50 +36,13 @@ import {
   Search,
   ArrowUpDown,
   Filter,
+  Download,
+  FileSpreadsheet,
+  Database,
 } from "lucide-react";
-
-interface SessionData {
-  colaborador?: string;
-  colaboradores?: string[];
-  data: string;
-  turno: string;
-  area: string;
-  loginTime: string;
-  usuarioCustos?: string;
-}
-
-interface NotaFiscal {
-  id: string;
-  codigoCompleto: string;
-  data: string;
-  numeroNF: string;
-  volumes: number;
-  destino: string;
-  fornecedor: string;
-  clienteDestino: string;
-  tipoCarga: string;
-  timestamp: string;
-  status: "ok" | "divergencia";
-  divergencia?: {
-    tipo: string;
-    descricao: string;
-    volumesInformados: number;
-  };
-}
-
-interface Relatorio {
-  id: string;
-  nome: string;
-  colaboradores: string;
-  data: string;
-  turno: string;
-  area: string;
-  quantidadeNotas: number;
-  somaVolumes: number;
-  notas: NotaFiscal[];
-  dataFinalizacao: string;
-  status: string;
-}
+import { useSession, useRelatorios } from "@/hooks/use-database";
+import type { SessionData, NotaFiscal, Relatorio } from "@/lib/database-service";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const copiarDadosParaSAP = (dados: string, tipo: string) => {
   if (navigator.clipboard) {
@@ -121,48 +84,100 @@ export default function CustosPage() {
   const [relatorios, setRelatorios] = useState<Relatorio[]>([]);
   const router = useRouter();
 
+  // Hooks do banco de dados
+  const { getSession } = useSession();
+  const { getRelatorios, saveRelatorio } = useRelatorios();
+
   // Estados para filtros e ordenação
   const [filtroTexto, setFiltroTexto] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todos");
   const [filtroColaborador, setFiltroColaborador] = useState("todos");
+  const [filtroDataInicio, setFiltroDataInicio] = useState("");
+  const [filtroDataFim, setFiltroDataFim] = useState("");
   const [ordenacao, setOrdenacao] = useState("data_desc");
   const [notasFiltradas, setNotasFiltradas] = useState<NotaFiscal[]>([]);
   const [relatorioSelecionado, setRelatorioSelecionado] =
     useState<Relatorio | null>(null);
 
   useEffect(() => {
-    const session = localStorage.getItem("sistema_session");
+    const verificarSessao = async () => {
+      try {
+        // Obter sessão do banco de dados
+        const session = await getSession("current")
+        
     if (!session) {
-      router.push("/");
-      return;
-    }
-
-    const sessionObj = JSON.parse(session);
+          // Fallback temporário para localStorage
+          const sessionLocal = localStorage.getItem("sistema_session")
+          if (!sessionLocal) {
+            router.push("/")
+            return
+          }
+          
+          const sessionObj = JSON.parse(sessionLocal)
     if (sessionObj.area !== "custos") {
-      router.push("/");
-      return;
-    }
-
-    setSessionData(sessionObj);
-    carregarRelatorios();
+            router.push("/")
+            return
+          }
+          
+          setSessionData(sessionObj)
+          await carregarRelatorios()
+        } else {
+          if (session.area !== "custos") {
+            router.push("/")
+            return
+          }
+          setSessionData(session)
+          await carregarRelatorios()
+        }
 
     // Polling para atualizações
-    const interval = setInterval(carregarRelatorios, 5000);
-    return () => clearInterval(interval);
-  }, [router]);
-
-  const carregarRelatorios = () => {
-    const chaveRelatorios = "relatorios_custos";
-    const relatoriosSalvos = localStorage.getItem(chaveRelatorios);
-    if (relatoriosSalvos) {
-      setRelatorios(JSON.parse(relatoriosSalvos));
+        const interval = setInterval(carregarRelatorios, 5000)
+        return () => clearInterval(interval)
+      } catch (error) {
+        console.error("Erro ao verificar sessão:", error)
+        console.log("⚠️ Usando fallback para localStorage")
+        
+        // Fallback temporário
+        const sessionLocal = localStorage.getItem("sistema_session")
+        if (!sessionLocal) {
+          router.push("/")
+          return
+        }
+        
+        const sessionObj = JSON.parse(sessionLocal)
+        if (sessionObj.area !== "custos") {
+          router.push("/")
+          return
+        }
+        
+        setSessionData(sessionObj)
+        await carregarRelatorios()
+      }
     }
-  };
+
+    verificarSessao()
+  }, [router, getSession])
+
+  const carregarRelatorios = async () => {
+    try {
+      const relatoriosCarregados = await getRelatorios()
+      setRelatorios(relatoriosCarregados)
+    } catch (error) {
+      console.error("Erro ao carregar relatórios:", error)
+      console.log("⚠️ Usando fallback para localStorage")
+      
+      // Fallback temporário
+      const chaveRelatorios = "relatorios_custos"
+      const relatoriosSalvos = localStorage.getItem(chaveRelatorios)
+    if (relatoriosSalvos) {
+        setRelatorios(JSON.parse(relatoriosSalvos))
+    }
+    }
+  }
 
   const handleLogout = () => {
-    localStorage.removeItem("sistema_session");
-    router.push("/");
-  };
+    router.push("/")
+  }
 
   const copiarNFs = (notas: NotaFiscal[]) => {
     const nfsTexto = notas.map((nota) => nota.numeroNF).join("\n");
@@ -181,7 +196,7 @@ export default function CustosPage() {
     const divergenciasTexto = divergencias
       .map(
         (nota) =>
-          `${nota.numeroNF}|${nota.divergencia?.tipo}|${nota.divergencia?.descricao}|${nota.divergencia?.volumesInformados}`
+          `${nota.numeroNF}|${nota.divergencia?.observacoes}|${nota.divergencia?.observacoes}|${nota.divergencia?.volumesInformados}`
       )
       .join("\n");
     copiarDadosParaSAP(
@@ -207,7 +222,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
         const volumes = nota.divergencia?.volumesInformados || nota.volumes;
         const status = nota.status === "ok" ? "OK" : "DIVERGÊNCIA";
         const divergencia = nota.divergencia
-          ? `${nota.divergencia.tipo} - ${nota.divergencia.descricao}`
+          ? `${nota.divergencia.observacoes}`
           : "";
 
         return `${nota.numeroNF}|${volumes}|${nota.destino}|${nota.fornecedor}|${status}|${divergencia}`;
@@ -302,25 +317,187 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
 
   // Obter lista de colaboradores únicos para filtro
   const colaboradoresUnicos = [
-    ...new Set(relatorios.map((rel) => rel.colaboradores)),
+    ...new Set(relatorios.map((rel) => 
+      Array.isArray(rel.colaboradores) ? rel.colaboradores.join(', ') : rel.colaboradores
+    )),
   ];
 
-  // Filtrar relatórios por colaborador
+  // Função para exportar relatório em Excel/CSV
+  const exportarRelatorioExcel = (relatorio: Relatorio) => {
+    // Criar cabeçalho CSV
+    const cabecalho = [
+      "NF",
+      "Volumes",
+      "Destino",
+      "Fornecedor",
+      "Cliente Destino",
+      "Tipo Carga",
+      "Status",
+      "Divergência Tipo",
+      "Divergência Descrição",
+      "Volumes Informados",
+      "Data",
+      "Turno",
+      "Colaborador",
+    ].join(",");
+
+    // Criar linhas de dados
+    const linhas = relatorio.notas.map((nota) => {
+      const volumes = nota.divergencia?.volumesInformados || nota.volumes;
+      const status = nota.status === "ok" ? "OK" : "DIVERGÊNCIA";
+              const divergenciaTipo = nota.divergencia?.observacoes || "";
+        const divergenciaDescricao = nota.divergencia?.observacoes || "";
+      const volumesInformados = nota.divergencia?.volumesInformados || "";
+
+      return [
+        nota.numeroNF,
+        volumes,
+        nota.destino,
+        nota.fornecedor,
+        nota.clienteDestino,
+        nota.tipoCarga,
+        status,
+        divergenciaTipo,
+        divergenciaDescricao,
+        volumesInformados,
+        relatorio.data,
+        relatorio.turno,
+        relatorio.colaboradores,
+      ].join(",");
+    });
+
+    // Combinar cabeçalho e dados
+    const csvContent = [cabecalho, ...linhas].join("\n");
+
+    // Criar e baixar arquivo
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `relatorio_${relatorio.nome}_${relatorio.data}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Função para exportar todos os relatórios filtrados
+  const exportarTodosRelatoriosExcel = () => {
+    const relatoriosParaExportar = relatoriosFiltradosPorData;
+    
+    if (relatoriosParaExportar.length === 0) {
+      alert("Nenhum relatório encontrado para exportar.");
+      return;
+    }
+
+    // Criar cabeçalho CSV
+    const cabecalho = [
+      "Relatório",
+      "Colaborador",
+      "Data",
+      "Turno",
+      "NF",
+      "Volumes",
+      "Destino",
+      "Fornecedor",
+      "Cliente Destino",
+      "Tipo Carga",
+      "Status",
+      "Divergência Tipo",
+      "Divergência Descrição",
+      "Volumes Informados",
+      "Data Finalização",
+    ].join(",");
+
+    // Criar linhas de dados
+    const linhas = relatoriosParaExportar.flatMap((relatorio) =>
+      relatorio.notas.map((nota) => {
+        const volumes = nota.divergencia?.volumesInformados || nota.volumes;
+        const status = nota.status === "ok" ? "OK" : "DIVERGÊNCIA";
+        const divergenciaTipo = nota.divergencia?.observacoes || "";
+        const divergenciaDescricao = nota.divergencia?.observacoes || "";
+        const volumesInformados = nota.divergencia?.volumesInformados || "";
+
+        return [
+          relatorio.nome,
+          relatorio.colaboradores,
+          relatorio.data,
+          relatorio.turno,
+          nota.numeroNF,
+          volumes,
+          nota.destino,
+          nota.fornecedor,
+          nota.clienteDestino,
+          nota.tipoCarga,
+          status,
+          divergenciaTipo,
+          divergenciaDescricao,
+          volumesInformados,
+          new Date(relatorio.dataFinalizacao).toLocaleString("pt-BR"),
+        ].join(",");
+      })
+    );
+
+    // Combinar cabeçalho e dados
+    const csvContent = [cabecalho, ...linhas].join("\n");
+
+    // Criar e baixar arquivo
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `relatorios_custos_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Filtrar relatórios por data
+  const relatoriosFiltradosPorData = relatorios.filter((relatorio) => {
+    if (!filtroDataInicio && !filtroDataFim) return true;
+    
+    const dataRelatorio = new Date(relatorio.data);
+    const dataInicio = filtroDataInicio ? new Date(filtroDataInicio) : null;
+    const dataFim = filtroDataFim ? new Date(filtroDataFim) : null;
+    
+    if (dataInicio && dataFim) {
+      return dataRelatorio >= dataInicio && dataRelatorio <= dataFim;
+    } else if (dataInicio) {
+      return dataRelatorio >= dataInicio;
+    } else if (dataFim) {
+      return dataRelatorio <= dataFim;
+    }
+    
+    return true;
+  });
+
+  // Filtrar relatórios por colaborador e data
   const relatoriosFiltrados =
     filtroColaborador === "todos"
-      ? relatorios
-      : relatorios.filter((rel) => rel.colaboradores === filtroColaborador);
+      ? relatoriosFiltradosPorData
+      : relatoriosFiltradosPorData.filter((rel) => {
+          const relColaboradores = Array.isArray(rel.colaboradores) ? rel.colaboradores.join(', ') : rel.colaboradores;
+          return relColaboradores === filtroColaborador;
+        });
 
-  const alterarStatusRelatorio = (relatorioId: string, novoStatus: string) => {
+  const alterarStatusRelatorio = async (relatorioId: string, novoStatus: string) => {
     const relatoriosAtualizados = relatorios.map((rel) =>
       rel.id === relatorioId ? { ...rel, status: novoStatus } : rel
-    );
+    )
 
-    setRelatorios(relatoriosAtualizados);
-    localStorage.setItem(
-      "relatorios_custos",
-      JSON.stringify(relatoriosAtualizados)
-    );
+    setRelatorios(relatoriosAtualizados)
+    
+    try {
+      // Salvar no banco de dados
+      const relatorioAtualizado = relatoriosAtualizados.find(rel => rel.id === relatorioId)
+      if (relatorioAtualizado) {
+        await saveRelatorio(relatorioAtualizado)
+      }
+    } catch (error) {
+      console.error("Erro ao salvar status no banco:", error)
+      alert("Erro ao salvar dados no banco. Verifique sua conexão.")
+    }
   };
 
   if (!sessionData) {
@@ -354,7 +531,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                 <div className="flex items-center gap-1 text-gray-600">
                   <User className="h-3 w-3 sm:h-4 sm:w-4 text-orange-600" />
                   <span className="font-medium truncate text-xs sm:text-sm">
-                    {sessionData.usuarioCustos || sessionData.colaborador || (sessionData.colaboradores && sessionData.colaboradores[0]) || "Usuário"}
+                    {sessionData.usuarioCustos || (sessionData.colaboradores && Array.isArray(sessionData.colaboradores) ? sessionData.colaboradores[0] : sessionData.colaboradores) || "Usuário"}
                   </span>
                 </div>
                 <div className="flex items-center space-x-4 text-xs text-gray-500">
@@ -381,12 +558,22 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Status do Banco de Dados */}
+        <div className="mb-6">
+          <Alert className="bg-green-50 border-green-200">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800">
+              <strong>Sistema conectado ao banco de dados!</strong> Os dados são salvos automaticamente e sincronizados entre dispositivos.
+            </AlertDescription>
+          </Alert>
+        </div>
+
         {/* Estatísticas */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
           <Card className="border-orange-200">
             <CardContent className="text-center p-4">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
-                {relatorios.length}
+                {relatoriosFiltrados.length}
               </div>
               <div className="text-xs text-gray-600 leading-tight">
                 Total Relatórios
@@ -396,7 +583,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
           <Card className="border-blue-200">
             <CardContent className="text-center p-4">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">
-                {relatorios.reduce((sum, rel) => sum + rel.quantidadeNotas, 0)}
+                {relatoriosFiltrados.reduce((sum, rel) => sum + rel.quantidadeNotas, 0)}
               </div>
               <div className="text-xs text-gray-600 leading-tight">
                 Total Notas
@@ -406,7 +593,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
           <Card className="border-green-200">
             <CardContent className="text-center p-4">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
-                {relatorios.reduce((sum, rel) => sum + rel.somaVolumes, 0)}
+                {relatoriosFiltrados.reduce((sum, rel) => sum + rel.somaVolumes, 0)}
               </div>
               <div className="text-xs text-gray-600 leading-tight">
                 Total Volumes
@@ -416,7 +603,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
           <Card className="border-purple-200">
             <CardContent className="text-center p-4">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600">
-                {relatorios.reduce(
+                {relatoriosFiltrados.reduce(
                   (sum, rel) =>
                     sum +
                     rel.notas.filter((n) => n.status === "divergencia").length,
@@ -432,23 +619,41 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
 
         {/* Lista de Relatórios */}
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">
             Relatórios Finalizados
           </h2>
 
-          {/* Filtro de colaborador */}
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="flex items-center space-x-2">
+            {/* Botão de Exportar Todos */}
+            {relatoriosFiltrados.length > 0 && (
+              <Button
+                onClick={exportarTodosRelatoriosExcel}
+                variant="outline"
+                className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
+                size="sm"
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Exportar Todos ({relatoriosFiltrados.length})
+              </Button>
+            )}
+          </div>
+
+          {/* Filtros */}
+          <div className="bg-white p-4 rounded-lg border border-orange-200 space-y-4">
+            <div className="flex items-center space-x-2 mb-3">
               <Filter className="h-4 w-4 text-gray-500" />
-              <span className="text-sm font-medium">
-                Filtrar por colaborador:
-              </span>
+              <span className="font-medium text-gray-700">Filtros</span>
             </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Filtro de colaborador */}
+              <div>
+                <Label className="text-sm">Colaborador</Label>
             <Select
               value={filtroColaborador}
               onValueChange={setFiltroColaborador}
             >
-              <SelectTrigger className="w-48">
+                  <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -462,15 +667,69 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
             </Select>
           </div>
 
-          {relatorios.length === 0 ? (
+              {/* Filtro de data início */}
+              <div>
+                <Label className="text-sm">Data Início</Label>
+                <Input
+                  type="date"
+                  value={filtroDataInicio}
+                  onChange={(e) => setFiltroDataInicio(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Filtro de data fim */}
+              <div>
+                <Label className="text-sm">Data Fim</Label>
+                <Input
+                  type="date"
+                  value={filtroDataFim}
+                  onChange={(e) => setFiltroDataFim(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Botão limpar filtros */}
+              <div className="flex items-end">
+                <Button
+                  onClick={() => {
+                    setFiltroColaborador("todos");
+                    setFiltroDataInicio("");
+                    setFiltroDataFim("");
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                >
+                  Limpar Filtros
+                </Button>
+              </div>
+            </div>
+
+            {/* Resumo dos filtros aplicados */}
+            {(filtroColaborador !== "todos" || filtroDataInicio || filtroDataFim) && (
+              <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                <span className="font-medium">Filtros ativos:</span>
+                {filtroColaborador !== "todos" && ` Colaborador: ${filtroColaborador}`}
+                {filtroDataInicio && ` Data início: ${filtroDataInicio}`}
+                {filtroDataFim && ` Data fim: ${filtroDataFim}`}
+                <span className="ml-2">({relatoriosFiltrados.length} relatórios encontrados)</span>
+              </div>
+            )}
+          </div>
+
+          {relatoriosFiltrados.length === 0 ? (
             <Card className="border-orange-200">
               <CardContent className="text-center py-12 text-gray-500">
                 <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
                 <h3 className="text-lg font-medium mb-2">
-                  Nenhum relatório disponível
+                  Nenhum relatório encontrado
                 </h3>
                 <p>
-                  Os relatórios finalizados aparecerão aqui automaticamente.
+                  {relatorios.length === 0 
+                    ? "Os relatórios finalizados aparecerão aqui automaticamente."
+                    : "Tente ajustar os filtros aplicados."
+                  }
                 </p>
               </CardContent>
             </Card>
@@ -623,7 +882,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                               </div>
                             </div>
 
-                            {/* Botões de Cópia */}
+                            {/* Botões de Cópia e Exportar */}
                             <div className="flex flex-wrap gap-2">
                               <Button
                                 onClick={() => copiarNFs(notasFiltradas)}
@@ -682,6 +941,17 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                               >
                                 <Copy className="h-4 w-4 mr-2" />
                                 Copiar Relatório Completo
+                              </Button>
+                              
+                              {/* Novo botão de exportar Excel */}
+                              <Button
+                                onClick={() => exportarRelatorioExcel(relatorio)}
+                                variant="outline"
+                                className="bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700"
+                                size="sm"
+                              >
+                                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                                Exportar Excel
                               </Button>
                             </div>
 
@@ -857,10 +1127,9 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                                       {nota.divergencia && (
                                         <span
                                           className="text-orange-600"
-                                          title={`${nota.divergencia.tipo} - ${nota.divergencia.descricao}`}
+                                          title={nota.divergencia.observacoes}
                                         >
-                                          {nota.divergencia.tipo} -{" "}
-                                          {nota.divergencia.descricao}
+                                          {nota.divergencia.observacoes}
                                         </span>
                                       )}
                                     </div>

@@ -8,20 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, CheckCircle } from "lucide-react"
-
-interface NotaFiscal {
-  id: string
-  codigoCompleto: string
-  data: string
-  numeroNF: string
-  volumes: number
-  destino: string
-  fornecedor: string
-  clienteDestino: string
-  tipoCarga: string
-  timestamp: string
-  status: "ok" | "divergencia"
-}
+import type { NotaFiscal } from "@/lib/database-service"
 
 interface TipoDivergencia {
   codigo: string

@@ -32,13 +32,8 @@ import ChatModal from "./components/chat-modal";
 
 // Adicionar a importação do novo componente de ajuda
 import AjudaSection from "./components/ajuda-section";
-
-interface SessionData {
-  colaboradores: string[];
-  data: string;
-  turno: string;
-  loginTime: string;
-}
+import { useSession } from "@/hooks/use-database";
+import type { SessionData } from "@/lib/database-service";
 
 export default function PainelPage() {
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
@@ -51,15 +46,46 @@ export default function PainelPage() {
   });
   const router = useRouter();
 
+  // Hook do banco de dados
+  const { getSession } = useSession();
+
   useEffect(() => {
-    const session = localStorage.getItem("sistema_session");
-    if (!session) {
-      router.push("/");
-      return;
+    const verificarSessao = async () => {
+      try {
+        // Obter sessão do banco de dados
+        const session = await getSession("current")
+        
+        if (!session) {
+          // Fallback temporário para localStorage
+          const sessionLocal = localStorage.getItem("sistema_session")
+          if (!sessionLocal) {
+            router.push("/")
+            return
+          }
+          
+          const sessionObj = JSON.parse(sessionLocal)
+          setSessionData(sessionObj)
+        } else {
+          setSessionData(session)
+        }
+      } catch (error) {
+        console.error("Erro ao verificar sessão:", error)
+        console.log("⚠️ Usando fallback para localStorage")
+        
+        // Fallback temporário
+        const sessionLocal = localStorage.getItem("sistema_session")
+        if (!sessionLocal) {
+          router.push("/")
+          return
+        }
+        
+        const sessionObj = JSON.parse(sessionLocal)
+        setSessionData(sessionObj)
+      }
     }
 
-    setSessionData(JSON.parse(session));
-  }, [router]);
+    verificarSessao()
+  }, [router, getSession])
 
   const handleLogout = () => {
     localStorage.removeItem("sistema_session");

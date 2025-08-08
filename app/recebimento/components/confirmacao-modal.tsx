@@ -9,20 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Package, CheckCircle, Edit } from "lucide-react";
-
-interface NotaFiscal {
-  id: string;
-  codigoCompleto: string;
-  data: string;
-  numeroNF: string;
-  volumes: number;
-  destino: string;
-  fornecedor: string;
-  clienteDestino: string;
-  tipoCarga: string;
-  timestamp: string;
-  status: "ok" | "divergencia";
-}
+import type { NotaFiscal } from "@/lib/database-service";
 
 interface ConfirmacaoModalProps {
   isOpen: boolean;

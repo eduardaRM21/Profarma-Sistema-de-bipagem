@@ -27,8 +27,6 @@ import {
   MessageSquare,
 } from "lucide-react"
 import BarcodeScanner from "./barcode-scanner"
-import BarcodeScannerOptimized from "./barcode-scanner-optimized"
-import BarcodeTest from "./barcode-test"
 import ChatModal from "./chat-modal"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/components/ui/use-toast"
@@ -1394,11 +1392,8 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
                 </Button>
               </div>
               
-              {/* Componente de teste temporário */}
-              <BarcodeTest />
-              
-              {/* Usar a versão otimizada para leitura de códigos */}
-              <BarcodeScannerOptimized
+              {/* Scanner de códigos de barras */}
+              <BarcodeScanner
                 onScan={handleCodigoEscaneado}
                 onError={(error: string) => {
                   console.error("Erro no scanner:", error)
